@@ -1,0 +1,16 @@
+cat <<'EOF' > .gitignore
+# Python
+__pycache__/
+*.py[cod]
+.git-tagger-venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Secrets & env
+.env
+
+# Data artifacts
+data/*.csv
+data/*.parquet
+EOF

@@ -1,96 +1,100 @@
 #!/usr/bin/env python3
 """
-src/clean_split.py
-------------------
-Load the raw Parquet produced by merge.py, normalise & filter labels,
-then write train/test Parquet files to  data/clean_parqs/.
+Clean and split the merged PR dataset.
+------------------------------------------------------------------------
+* Normalises labels (exact synonyms + prefix collapse)
+* Keeps **TOP_N** most frequent labels to avoid train/test drift
+* 80/20 stratified split → Parquet files for downstream training
 """
 
-import os, re, glob
+import os, glob, re
 from collections import Counter
-from pathlib import Path
-
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-# ----------------------------------------------------------------------
-RAW_PATH  = Path("data/all_repos_raw.parquet")
-OUT_DIR   = Path("data/clean_parqs")
-MIN_FREQ  = 500          # keep labels that appear ≥ MIN_FREQ times
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+# ---------------------------------------------------------------------
+# Params
+RAW_PATH   = "data/all_repos_raw.parquet"
+OUT_DIR    = "data/clean_parqs"
+TOP_N      = 20          # ← keep N busiest labels
+os.makedirs(OUT_DIR, exist_ok=True)
 
-# ------------------------------------------------------------------
-# hard synonyms (exact matches)
+# ---------------------------------------------------------------------
+# Synonym + prefix maps  ── tweak here only ─────────────────────────────
 MAP = {
-    "bug": "bug", "bugfix": "bug", "kind/bug": "bug",
-    "enhancement": "feature", "feat": "feature", "kind/feature": "feature",
+    # bugs / features
+    "bug": "bug", "type:-bug": "bug", "type:-bug/fix": "bug",
+    "bugfix": "bug", "kind/bug": "bug",
+    "enhancement": "feature", "01---enhancement": "feature",
+    # docs / tests
     "documentation": "docs", "doc": "docs", "docs": "docs",
     "test": "tests", "tests": "tests",
-    "refactor": "refactor", "maintenance": "refactor", "debt": "refactor",
+    # misc
+    "performance": "perf",
 }
 
-# prefix families  →  canonical tag
 MAP_PREFIX = {
     "area/":     "area",
+    "a-":        "area",          # a-io, a-ast …
     "sig/":      "sig",
+    "module:":   "module",
     "priority/": "priority",
     "size/":     "size",
+    "topic:-":   "topic",
+    "type:-":    "type",
+    "stat:":     "status",
+    "risk:-":    "risk",
+    "backend/":  "backend",
 }
 
-def map_labels(lbls):
-    """
-    • collapse common prefixes   (e.g. 'sig/node'   → 'sig')
-    • apply exact-match MAP      (e.g. 'bugfix' → 'bug')
-    • deduplicate, drop empties
-    """
-    canon = []
+# ---------------------------------------------------------------------
+# Helper
+
+def map_labels(lbls: list[str]) -> list[str]:
+    """Lower‑case, collapse prefixes, apply exact synonyms, dedup"""
+    canon: set[str] = set()
     for l in lbls:
         if not l:
             continue
+        l = l.lower().strip()
         # prefix collapse
         l2 = next((v for k, v in MAP_PREFIX.items() if l.startswith(k)), l)
-        canon.append(MAP.get(l2, l2))    # exact synonym map
-    return sorted(set(canon))
-# ------------------------------------------------------------------
+        # exact synonym
+        canon.add(MAP.get(l2, l2))
+    return sorted(canon)
 
-
-if not RAW_PATH.exists():
-    raise SystemExit("❌  Raw Parquet not found. Run merge.py first.")
-
+# ---------------------------------------------------------------------
+# Load and clean
 print(f"Loading {RAW_PATH} …")
 df = pd.read_parquet(RAW_PATH)
 
-# --- label normalisation ------------------------------------------------
+# split label strings → list[str]
 df["labels_list"] = (
-    df["labels"].fillna("")
-      .str.lower()
+    df.labels.fillna("")
       .str.replace(r"\s+", "-", regex=True)
-      .str.split(";")
+      .str.split(";|")  # split on semicolon or pipe
 )
-df["labels_norm"] = df["labels_list"].apply(map_labels)
 
-# --- frequency filter ---------------------------------------------------
-freq = Counter(l for labs in df["labels_norm"] for l in labs)
-keep_labels = {l for l, c in freq.items() if c >= MIN_FREQ}
+# map + normalise
+df["labels_norm"] = df.labels_list.apply(map_labels)
 
-df = df[df["labels_norm"].map(lambda L: any(l in keep_labels for l in L))]
-df = df[df["labels_norm"].map(bool)]          # drop rows with 0 kept labels
+# --- keep busiest TOP_N labels ---------------------------------------
+freq = Counter(l for labs in df.labels_norm for l in labs)
+keep = {l for l, _ in freq.most_common(TOP_N)}
+df = df[df.labels_norm.map(lambda L: any(l in keep for l in L))]
+print(f"After cleaning: {len(df):,} rows, {len(keep)} labels kept.")
+for l, c in freq.most_common(TOP_N):
+    print(f"  {l:<15s}: {c}")
 
-print(f"After cleaning: {len(df):,} rows, {len(keep_labels)} labels kept.")
-for l in sorted(keep_labels):
-    print(f"  {l:<10}: {freq[l]}")
-
-# --- train / test split --------------------------------------------------
+# --- train / test split ---------------------------------------------
 train, test = train_test_split(
     df[["title", "body", "labels_norm"]],
-    test_size=0.2,
+    test_size=0.20,
     random_state=42,
-    shuffle=True,
+    stratify=df.labels_norm.map(tuple),
 )
 
-(train.to_parquet(OUT_DIR / "train.parquet", index=False))
-(test .to_parquet(OUT_DIR / "test.parquet",  index=False))
-
-print(f"✅  Saved cleaned Parquet files → {OUT_DIR}")
-print(f"   train: {len(train):,} rows")
-print(f"   test : {len(test):,} rows")
+train.to_parquet(f"{OUT_DIR}/train.parquet", index=False)
+test .to_parquet(f"{OUT_DIR}/test.parquet",  index=False)
+print("\n✅  Saved cleaned Parquet files →", OUT_DIR)
+print(f"   train: {len(train):,} rows\n   test : {len(test):,} rows")

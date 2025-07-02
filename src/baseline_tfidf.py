@@ -1,53 +1,57 @@
 #!/usr/bin/env python3
 """
-Baseline multi-label classifier:
-  • TF-IDF (1–2-grams, 60 k features)
-  • One-vs-Rest Logistic Regression
-  • Saves model to src/baseline_tfidf.joblib
+Baseline TF‑IDF → Logistic Regression multi‑label classifier
+----------------------------------------------------------------
+* Vectoriser: 1–3‑gram TF‑IDF, 120 k features
+* Classifier: One‑vs‑Rest LogisticRegression (C=4, balanced)
+* Prints micro‑F1 and saves compressed joblib bundle
 """
 
 from pathlib import Path
-import pandas as pd, joblib
+import joblib, pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.metrics import f1_score, classification_report
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
 
-ROOT = Path(__file__).resolve().parent.parent   # pr-tagger root
-DATA = ROOT / "data" / "clean_parqs"
+DATA_DIR = Path("data/clean_parqs")
+MODEL_PATH = Path("src/baseline_tfidf.joblib")
 
-train = pd.read_parquet(DATA / "train.parquet")
-test  = pd.read_parquet(DATA / "test.parquet")
+train = pd.read_parquet(DATA_DIR / "train.parquet")
+test  = pd.read_parquet(DATA_DIR / "test.parquet")
 
-X_train = (train["title"] + " " + train["body"]).fillna("")
-X_test  = (test ["title"] + " " + test ["body"]).fillna("")
+X_train = (train.title + " " + train.body).fillna("")
+X_test  = (test.title  + " " + test.body ).fillna("")
 
 mlb = MultiLabelBinarizer()
-y_train = mlb.fit_transform(train["labels_norm"])
-y_test  = mlb.transform(test["labels_norm"])
+Y_train = mlb.fit_transform(train.labels_norm)
+Y_test  = mlb.transform(test.labels_norm)
 
 pipe = Pipeline([
-    ("tfidf", TfidfVectorizer(max_features=60_000, ngram_range=(1, 2))),
-    ("clf",  OneVsRestClassifier(
-                 LogisticRegression(max_iter=400, n_jobs=-1, verbose=0)))
+    ("tfidf", TfidfVectorizer(
+        max_features=120_000,
+        ngram_range=(1, 3),
+        stop_words="english")),
+    ("clf", OneVsRestClassifier(
+        LogisticRegression(
+            C=4.0,
+            class_weight="balanced",
+            max_iter=2000,
+            n_jobs=-1)))
 ])
+
 print("Training …")
-pipe.fit(X_train, y_train)
+pipe.fit(X_train, Y_train)
 
-y_pred = pipe.predict(X_test)
-score = f1_score(y_test, y_pred, average="micro")
-print(f"\n=== Results on TEST set ===")
-print(f"micro-F1: {score:.3f}\n")
+Y_pred = pipe.predict(X_test)
+print("\n=== Results on TEST set ===")
+print("micro‑F1:", round(f1_score(Y_test, Y_pred, average="micro"), 3))
 
-print(classification_report(
-        y_test, y_pred, target_names=mlb.classes_))
+# Optional detailed table (comment out if noisy)
+# print(classification_report(Y_test, Y_pred, target_names=mlb.classes_))
 
-
-model_path = ROOT / "src" / "baseline_tfidf.joblib"
-joblib.dump({"model": pipe, "binarizer": mlb}, model_path)
-print("\n  Saved model →", model_path)
+# save compressed model bundle
+joblib.dump({"model": pipe, "binarizer": mlb}, MODEL_PATH, compress=3)
+print("\n✅  Saved model →", MODEL_PATH)

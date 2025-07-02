@@ -11,6 +11,8 @@ __pycache__/
 .env
 
 # Data artifacts
+src/*.joblib
+src/baseline_tfidf.joblib
 data/*.csv
 data/*.parquet
 EOF

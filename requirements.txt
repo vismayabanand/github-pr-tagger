@@ -1,33 +1,13 @@
-# --- Web service -------------------------------------------------
-fastapi==0.111.*            # REST framework
-uvicorn[standard]==0.29.*   # ASGI server, reload, logging
+# --- Web service ---
+fastapi==0.111.*
+uvicorn[standard]==0.29.*
 
-# --- ML + NLP stack ---------------------------------------------
-sentence-transformers==2.7.*   # MiniLM / CodeBERT encoder (pulls torch & transformers)
-scikit-learn==1.5.*            # TF-IDF, LogisticRegression
-joblib==1.4.*                  # model (de)serialisation
-numpy==1.26.*                  # math backend
+# --- ML stack -------
+sentence-transformers==2.7.*
+scikit-learn==1.5.*
+joblib==1.4.*
+numpy==1.26.*
 
-# --- Data wrangling ---------------------------------------------
-pandas==2.3.*                  # CSV → Parquet merge / EDA
-pyarrow==16.1.*                # Parquet engine for pandas
-tqdm==4.66.*                   # progress bars
-
-# --- Scraping ----------------------------------------------------
-requests==2.32.*               # GitHub API calls
-python-dotenv==1.0.*           # load GH_TOKEN from .env (optional)
-
-# --- (Optional) Local testing -----------------------------------
-jq==1.7.0                      # nice JSON inspect in curl demos (binary in wheels)
-
-
-#How to install dependencies:
-# 1. Create a virtual environment
-# 2. Activate the virtual environment
-# 3. Install dependencies from requirements.txt
-#python3 -m venv .git-tagger-venv
-#source .git-tagger-venv/bin/activate
-#pip install -r requirements.txt
-
-
-
+# --- HTTP ----------
+requests==2.32.*       # only if api.py ever calls out; fine to keep
+python-dotenv==1.0.*   # harmless, 18 kB

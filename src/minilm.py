@@ -9,6 +9,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.metrics import f1_score
+import os; 
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data" / "clean_parqs"

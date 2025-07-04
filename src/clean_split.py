@@ -34,6 +34,8 @@ MAP_PREFIX = {
 }
 
 MAP = {
+    "🤖:docs": "docs",
+    "robot:docs": "docs",
     "bug": "bug", "type:-bug": "bug", "type:-bug/fix": "bug",
     "enhancement": "feature", "01---enhancement": "feature",
     "documentation": "docs", "doc": "docs", "docs": "docs",

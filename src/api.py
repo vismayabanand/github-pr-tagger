@@ -1,39 +1,28 @@
 from fastapi import FastAPI
-import joblib, numpy as np, os
+import joblib, pathlib, threading
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+app = FastAPI()
+_model_lock = threading.Lock()
+_bundle = None                      # not loaded yet
 
-# ---------- Load model bundle ----------
-bundle  = joblib.load("src/minilm.joblib")          # or baseline_tfidf.joblib
-enc, clf, mlb = bundle["encoder"], bundle["clf"], bundle["binarizer"]
+def get_model():
+    global _bundle
+    with _model_lock:
+        if _bundle is None:         # first request
+            _bundle = joblib.load(pathlib.Path(__file__).parent / "minilm.joblib")
+    return _bundle
 
-# ---------- Create the web-app first ----------
-app = FastAPI()                #  ← this line was missing
-
-# ---------- Config ----------
-#THRESH = 0.30          # global min-confidence
-#TOP_K  = 2             # return at most 2 labels
-THRESH  = 0.30      # return any label ≥30 %
-TOP_K   = 5         # but cap list length to 5
-
-# ---------- Routes ----------
-@app.get("/")                          # quick health-check
+@app.get("/")
 def root():
     return {"status": "ok"}
 
 @app.post("/label")
 def label(pr: dict):
-    text = (pr.get("title", "") + " " + pr.get("body", "")).strip()
-    emb  = enc.encode([text])
-    prob = clf.predict_proba(emb)[0]            # 1-D array
-    #idx  = [i for i, p in enumerate(prob) if p >= THRESH]
-    # keep highest-prob if more than TOP_K
-    #idx  = sorted(idx, key=lambda i: prob[i], reverse=True)[:TOP_K]
-
-    top = prob.argmax()
-    if prob[top] >= 0.15:
-        idx = [top]
-    else:
-        idx = []
+    bundle = get_model()
+    enc, clf, mlb = bundle["encoder"], bundle["clf"], bundle["binarizer"]
+    text  = (pr.get("title","") + " " + pr.get("body","")).strip()
+    prob  = clf.predict_proba(enc.encode([text]))[0]
+    idx   = prob.argsort()[-2:][::-1]
+    idx   = [i for i in idx if prob[i] >= 0.25]
     return {"labels": mlb.classes_[idx].tolist(),
             "scores": prob[idx].round(3).tolist()}

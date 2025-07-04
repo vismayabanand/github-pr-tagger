@@ -1,0 +1,28 @@
+name: Auto-label PRs
+on: pull_request_target
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call PR-Tagger API
+        id: tag
+        run: |
+          body=$(jq -Rs . < "$GITHUB_EVENT_PATH")
+          payload=$(jq -n --arg t "${{ github.event.pull_request.title }}" \
+                              --arg b "$body" \
+                              '{title:$t, body:$b}')
+          reply=$(curl -s -X POST "$TAGGER_URL" \
+                       -H "Content-Type: application/json" \
+                       -d "$payload")
+          labels=$(echo "$reply" | jq -r '.labels | join(",")')
+          echo "labels=$labels" >> $GITHUB_OUTPUT
+        env:
+          TAGGER_URL: ${{ secrets.TAGGER_URL }}
+
+      - name: Apply labels
+        if: steps.tag.outputs.labels != ''
+        run: gh pr edit ${{ github.event.pull_request.number }} \
+             --add-label ${{ steps.tag.outputs.labels }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

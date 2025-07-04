@@ -1,8 +1,11 @@
-# --- Web service ---
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# --- Web service -------------------------------------------------
 fastapi==0.111.*
 uvicorn[standard]==0.29.*
 
-# --- ML stack -------
+# --- ML + NLP stack ---------------------------------------------
+torch==2.3.1+cpu                 # ← small CPU wheel (no CUDA)
 sentence-transformers==2.7.*
 scikit-learn==1.5.*
 joblib==1.4.*
